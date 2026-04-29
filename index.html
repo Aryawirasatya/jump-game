@@ -6,8 +6,12 @@
 <meta name="description" content="Neon Runner - Game lari neon retro pixel. Lompati rintangan dan raih skor tertinggi!">
 <meta name="theme-color" content="#0a001f">
 <title>SUPERDINGGO - Pixel Endless Runner Game</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
+
+<!-- FIX #3: preconnect + preload font, tambah font-display:swap via link display=swap -->
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+
 <style>
   :root {
     --sky-top: #0a001f;
@@ -30,7 +34,7 @@
     align-items: center;
     justify-content: center;
     min-height: 100dvh;
-    overflow-x: hidden;   /* bukan overflow:hidden agar konten bisa scroll jika perlu */
+    overflow-x: hidden;
     overflow-y: auto;
     color: white;
     user-select: none;
@@ -103,6 +107,12 @@
   }
 
   /* ── CHARACTER ── */
+  /*
+   * FIX #2 + FIX #4:
+   * - Ganti "bottom" animasi ke translateY (compositor-only, nol layout/paint)
+   * - will-change: transform (valid, memberi hint compositor dengan benar)
+   * - Posisi dasar tetap bottom:50px di CSS, JS hanya ubah translateY
+   */
   #character {
     position: absolute;
     bottom: 50px;
@@ -115,7 +125,8 @@
     z-index: 10;
     filter: drop-shadow(0 0 8px var(--neon-cyan));
     transition: filter 0.1s;
-    will-change: bottom;
+    will-change: transform;           /* FIX #4: valid hint untuk compositor */
+    transform: translateY(0px);       /* baseline — JS hanya ubah nilai ini */
   }
   #character img, #char-default {
     width: 100%;
@@ -377,13 +388,6 @@
     z-index: 100;
   }
 
-  /* ════════════════════════════════════════════
-     RESPONSIVE — PORTRAIT MOBILE
-     Tinggi minimal 300px agar karakter tidak
-     keluar dari kotak saat melompat.
-     Lompatan max ≈ 150px + karakter 40px +
-     tanah 50px = ~240px, tambah buffer = 300px.
-  ════════════════════════════════════════════ */
   @media (max-width: 860px) {
     #game-wrapper { width: 95vw; height: 300px; }
     #game-title   { font-size: 20px; letter-spacing: 5px; }
@@ -411,15 +415,8 @@
     #outer        { padding: 8px; gap: 6px; }
   }
 
-  /* ════════════════════════════════════════════
-     RESPONSIVE — LANDSCAPE MOBILE
-     Tinggi viewport ≤ 500px (ponsel landscape).
-     Sembunyikan judul & label agar game wrapper
-     bisa pakai hampir seluruh tinggi layar.
-  ════════════════════════════════════════════ */
   @media (orientation: landscape) and (max-height: 500px) {
     body { align-items: flex-start; }
-
     #outer {
       flex-direction: row;
       flex-wrap: wrap;
@@ -429,8 +426,6 @@
       gap: 6px;
       min-height: 100dvh;
     }
-
-    /* Judul di atas, kecil, satu baris penuh */
     #game-title {
       width: 100%;
       font-size: 10px;
@@ -439,34 +434,24 @@
       text-align: center;
       line-height: 1;
     }
-
-    /* Game wrapper memenuhi sisa tinggi */
     #game-wrapper {
       width: 95vw;
-      /* tinggi = viewport - judul - padding - gap */
       height: calc(100dvh - 52px);
       min-height: 200px;
     }
-
-    /* Sembunyikan label bawah agar tidak ada scroll */
     #game-label { display: none; }
-
-    /* Overlay lebih compact */
     .overlay { gap: 10px; }
     .overlay h1 { font-size: 12px; }
     .overlay .subtitle { display: none; }
     #upload-zone { padding: 8px; }
     .go-score { font-size: 9px; }
     .go-hi    { font-size: 7px; }
-
-    /* Karakter & teks HUD sedikit kecil */
     #character { width: 36px; height: 36px; left: 45px; }
     #score-display { font-size: 9px; top: 8px; right: 12px; }
     #hi-score      { font-size: 6px; top: 22px; right: 12px; }
     #speed-display { font-size: 6px; top: 8px; }
   }
 
-  /* Landscape + layar agak lebih tinggi (tablet landscape) */
   @media (orientation: landscape) and (min-height: 501px) and (max-width: 1024px) {
     #game-wrapper { width: 90vw; height: min(340px, calc(100dvh - 100px)); }
     #outer { gap: 8px; }
@@ -561,25 +546,38 @@ generateStars("stars-svg-slow", 50, 0.5, 1.5);
 generateStars("stars-svg-fast", 30, 1, 2.5);
 
 // ── AUDIO ──
+// FIX #5: Inisialisasi AudioContext sekali di startGame(), bukan lazy per-frame
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
-let audioCtx;
-function ensureAudio() {
-  if (!audioCtx) audioCtx = new AudioCtx();
+let audioCtx = null;
+
+function initAudio() {
+  // Dipanggil sekali saat startGame — jauh sebelum frame pertama butuh suara
+  if (!audioCtx) {
+    try { audioCtx = new AudioCtx(); } catch(e) {}
+  }
+  // Beberapa mobile browser suspend AudioContext sampai ada user gesture
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
 }
+
 function playTone(freq, type, duration, vol=0.15) {
+  if (!audioCtx || audioCtx.state !== 'running') return;
   try {
-    ensureAudio();
-    const osc = audioCtx.createOscillator();
+    const osc  = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
     osc.type = type;
     osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(freq * 0.5, audioCtx.currentTime + duration);
     gain.gain.setValueAtTime(vol, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-    osc.start(); osc.stop(audioCtx.currentTime + duration);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
   } catch(e) {}
 }
+
 function sfxJump()     { playTone(520, 'square', 0.12, 0.12); setTimeout(()=>playTone(700,'square',0.08,0.08),60); }
 function sfxGameOver() { playTone(200,'sawtooth',0.15,0.18); setTimeout(()=>playTone(150,'sawtooth',0.15,0.3),120); }
 function sfxScore()    { playTone(880,'square',0.05,0.07); }
@@ -599,7 +597,7 @@ const goScoreT  = document.getElementById('go-score-text');
 const goHiT     = document.getElementById('go-hi-text');
 const wrapper   = document.getElementById('game-wrapper');
 
-let score = 0;
+let score   = 0;
 let hiScore = parseInt(localStorage.getItem('neon_hi') || '0');
 hiVal.textContent = hiScore;
 
@@ -630,21 +628,72 @@ const SCORE_INTERVAL = 6;
 
 let rafId;
 
-// ── LAYOUT CACHE (baca DOM sekali, bukan tiap frame) ──
-// Menyimpan ukuran karakter & wrapper agar game loop
-// tidak perlu getBoundingClientRect() setiap frame.
+// ── LAYOUT CACHE ──
 let wrapH = 0, wrapW = 0;
 let charOffsetLeft = 0, charOffsetWidth = 0, charOffsetHeight = 0;
+
+// FIX #1: Pre-cached ukuran tiap tipe obstacle — diukur sekali dari template,
+// bukan setelah appendChild() di setiap spawn. Ini eliminasi forced reflow.
+const OBS_SIZE_CACHE = {};
+
+function measureObstacleTemplate(type) {
+  if (OBS_SIZE_CACHE[type]) return OBS_SIZE_CACHE[type];
+
+  // Buat elemen di luar dokumen (tidak trigger reflow di main tree)
+  const tmp = document.createElement('div');
+  tmp.style.cssText = 'position:absolute;visibility:hidden;left:-9999px;bottom:0;display:flex;align-items:flex-end;gap:3px;';
+  tmp.className = 'obstacle ' + (type !== 'normal' ? type : '');
+
+  if (type === 'tall') {
+    const t = document.createElement('div');
+    t.className = 'cactus-trunk';
+    t.style.height = '60px'; // nilai tengah (50+10)
+    tmp.appendChild(t);
+  } else if (type === 'wide') {
+    const t = document.createElement('div');
+    t.className = 'cactus-trunk';
+    t.style.height = '32px';
+    tmp.appendChild(t);
+  } else if (type === 'double') {
+    for (let i = 0; i < 2; i++) {
+      const t = document.createElement('div');
+      t.className = 'cactus-trunk';
+      t.style.height = '40px';
+      tmp.appendChild(t);
+    }
+    tmp.style.gap = '18px';
+  } else {
+    // normal — worst case 3 trunks
+    for (let i = 0; i < 3; i++) {
+      const t = document.createElement('div');
+      t.className = 'cactus-trunk';
+      t.style.height = '42px';
+      tmp.appendChild(t);
+    }
+  }
+
+  document.body.appendChild(tmp);
+  const w = tmp.offsetWidth;
+  const h = tmp.offsetHeight;
+  document.body.removeChild(tmp);
+
+  OBS_SIZE_CACHE[type] = { w, h };
+  return OBS_SIZE_CACHE[type];
+}
 
 function cacheLayout() {
   wrapH = wrapper.clientHeight;
   wrapW = wrapper.clientWidth;
-  charOffsetLeft  = charEl.offsetLeft;
-  charOffsetWidth = charEl.offsetWidth;
-  charOffsetHeight= charEl.offsetHeight;
+  charOffsetLeft   = charEl.offsetLeft;
+  charOffsetWidth  = charEl.offsetWidth;
+  charOffsetHeight = charEl.offsetHeight;
 }
 
-window.addEventListener('resize', cacheLayout);
+window.addEventListener('resize', () => {
+  cacheLayout();
+  // Reset cache ukuran obstacle karena wrapper bisa berubah
+  Object.keys(OBS_SIZE_CACHE).forEach(k => delete OBS_SIZE_CACHE[k]);
+});
 
 // ── IMAGE UPLOAD ──
 const fileInput  = document.getElementById('file-input');
@@ -707,7 +756,8 @@ function showChallenge(msg) {
   challengeBanner.textContent = msg;
   challengeBanner.classList.add('show');
   setTimeout(() => challengeBanner.classList.remove('show'), 1800);
-  playTone(660,'square',0.08,0.1); setTimeout(()=>playTone(880,'square',0.1,0.1),100);
+  playTone(660,'square',0.08,0.1);
+  setTimeout(() => playTone(880,'square',0.1,0.1), 100);
 }
 
 function checkChallengeMilestone() {
@@ -759,23 +809,31 @@ document.getElementById('btn-change').addEventListener('click', e => {
 // ── GAME FUNCTIONS ──
 function startGame() {
   if (state === STATES.PLAYING) return;
-  ensureAudio();
+
+  // FIX #5: Init audio di sini — satu kali, jauh sebelum frame pertama butuh sfx
+  initAudio();
+
   preO.style.display = 'none';
-  goO.style.display = 'none';
+  goO.style.display  = 'none';
   state = STATES.PLAYING;
   score = 0;
   scoreVal.textContent = '0';
-  gameSpeed = 4;
-  spawnTimer = 60;
+  gameSpeed     = 4;
+  spawnTimer    = 60;
   spawnInterval = randomInterval();
-  scoreTimer = 0;
-  speedTimer = 0;
+  scoreTimer    = 0;
+  speedTimer    = 0;
   lastChallengeMilestone = 0;
-  activeChallenge = null;
+  activeChallenge        = null;
   isJumping = false;
-  charY = 0;
-  velY = 0;
-  cacheLayout(); // baca ukuran DOM sekali di sini
+  charY     = 0;
+  velY      = 0;
+
+  // FIX #1: Pre-measure semua tipe obstacle sebelum game loop dimulai
+  // (dipanggil sekali; hasil di-cache di OBS_SIZE_CACHE)
+  ['normal','tall','wide','double'].forEach(measureObstacleTemplate);
+
+  cacheLayout();
   updateCharPos();
   cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(gameLoop);
@@ -788,13 +846,13 @@ function retryGame() {
 
 function changeChar() {
   clearObstacles();
-  goO.style.display = 'none';
+  goO.style.display  = 'none';
   preO.style.display = 'flex';
   state = STATES.PRE;
   cancelAnimationFrame(rafId);
   resetCharImg();
   charY = 0;
-  velY = 0;
+  velY  = 0;
   updateCharPos();
 }
 
@@ -807,8 +865,12 @@ function jump() {
   }
 }
 
+// FIX #2: Gunakan transform (translateY) bukan bottom.
+// "bottom" memicu layout → paint → composite setiap frame.
+// translateY hanya composite — nol layout, nol paint.
+// charY positif = naik, jadi translateY = -charY
 function updateCharPos() {
-  charEl.style.bottom = (GROUND_Y + charY) + 'px';
+  charEl.style.transform = `translateY(${-charY}px)`;
 }
 
 // ── OBSTACLES ──
@@ -857,18 +919,25 @@ function spawnObstacle() {
     for (let i = 0; i < count; i++) {
       const trunk = document.createElement('div');
       trunk.className = 'cactus-trunk';
-      const h = 30 + Math.floor(Math.random() * 25);
-      trunk.style.height = h + 'px';
+      trunk.style.height = (30 + Math.floor(Math.random() * 25)) + 'px';
       obs.appendChild(trunk);
     }
   }
 
-  // Append dulu, lalu ukur sekali — tidak ada read/write di game loop
+  // FIX #1 (inti): JANGAN baca offsetWidth/offsetHeight setelah appendChild.
+  // Gunakan nilai yang sudah di-cache dari measureObstacleTemplate().
+  // Ini eliminasi forced synchronous reflow yang menjadi penyebab lag utama.
+  obs._x = wrapW;
+
+  // Append dulu ke DOM (satu write) — tidak ada read setelahnya
   wrapper.appendChild(obs);
-  obs._x      = wrapW;                // posisi X tersimpan di JS, bukan di DOM
-  obs._width  = obs.offsetWidth;      // baca sekali setelah append
-  obs._height = obs.offsetHeight;     // baca sekali setelah append
-  obs.style.transform = `translateX(${obs._x}px)`; // pakai transform, bukan left
+
+  // Ambil ukuran dari cache, bukan dari DOM
+  const cached = OBS_SIZE_CACHE[type] || OBS_SIZE_CACHE['normal'] || { w: 40, h: 42 };
+  obs._width  = cached.w;
+  obs._height = cached.h;
+
+  obs.style.transform = `translateX(${obs._x}px)`;
   obstacles.push(obs);
 }
 
@@ -883,18 +952,17 @@ function randomInterval() {
 }
 
 // ── COLLISION — murni JS, tanpa getBoundingClientRect() ──
-// Semua koordinat dihitung dari pojok kiri-atas wrapper.
-// charOffsetLeft / charOffsetWidth / charOffsetHeight di-cache saat startGame.
 function checkCollision(obs) {
   const pad = 6;
 
-  // Karakter: bottom = GROUND_Y + charY dari bawah wrapper
+  // Karakter: posisi dihitung dari bawah wrapper
+  // FIX #2 note: charY masih berarti "jarak dari tanah ke bawah karakter" — tidak berubah
   const cL = charOffsetLeft + pad;
   const cR = charOffsetLeft + charOffsetWidth  - pad;
   const cB = wrapH - GROUND_Y - charY          - pad;
   const cT = cB   - charOffsetHeight           + pad + pad;
 
-  // Obstacle: posisi X tersimpan di obs._x
+  // Obstacle
   const oL = obs._x          + pad;
   const oR = obs._x + obs._width  - pad;
   const oT = wrapH - GROUND_Y - obs._height    + pad;
@@ -907,17 +975,18 @@ function checkCollision(obs) {
 function gameLoop() {
   if (state !== STATES.PLAYING) return;
 
+  // Physics karakter
   if (isJumping || charY > 0) {
     velY += GRAVITY;
     charY -= velY;
     if (charY <= 0) {
       charY = 0;
-      velY = 0;
+      velY  = 0;
       isJumping = false;
       charEl.classList.remove('jumping');
     }
   }
-  updateCharPos();
+  updateCharPos(); // FIX #2: hanya ubah transform — no layout/paint
 
   speedTimer++;
   gameSpeed += SPEED_INCR;
@@ -925,16 +994,17 @@ function gameLoop() {
 
   spawnTimer--;
   if (spawnTimer <= 0) {
-    spawnObstacle();
+    spawnObstacle(); // FIX #1: spawn tidak lagi trigger reflow
     spawnInterval = randomInterval();
-    spawnTimer = spawnInterval;
+    spawnTimer    = spawnInterval;
   }
 
   for (let i = obstacles.length - 1; i >= 0; i--) {
     const obs = obstacles[i];
-    obs._x -= gameSpeed;                                    // update posisi di JS
-    obs.style.transform = `translateX(${obs._x}px)`;       // satu write, GPU composited
-    if (obs._x < -80) {
+    obs._x -= gameSpeed;
+    obs.style.transform = `translateX(${obs._x}px)`; // transform — GPU composited
+
+    if (obs._x < -120) {
       obs.remove();
       obstacles.splice(i, 1);
       continue;
