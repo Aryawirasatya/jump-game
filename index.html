@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="description" content="Neon Runner - Game lari neon retro pixel. Lompati rintangan dan raih skor tertinggi!">
+<meta name="theme-color" content="#0a001f">
+<title>NEON RUNNER - Pixel Endless Runner Game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky-top: #0a001f;
+    --sky-bot: #1a003f;
+    --ground: #0d0025;
+    --ground-line: #00ffcc;
+    --neon-pink: #ff2d78;
+    --neon-cyan: #00ffcc;
+    --neon-yellow: #ffe600;
+    --star-color: rgba(255,255,255,0.8);
+    --font: 'Press Start 2P', monospace;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--sky-top);
+    font-family: var(--font);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+    color: white;
+    user-select: none;
+  }
+
+  /* ── GAME WRAPPER ── */
+  #game-wrapper {
+    position: relative;
+    width: 800px;
+    height: 300px;
+    border: 2px solid var(--neon-cyan);
+    box-shadow: 0 0 30px var(--neon-cyan), inset 0 0 60px rgba(0,255,204,0.04);
+    overflow: hidden;
+    border-radius: 4px;
+  }
+
+  /* ── SKY BACKGROUND ── */
+  #sky {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, #0a001f 0%, #1a003f 60%, #2a004a 100%);
+  }
+
+  /* Scrolling star layer 1 */
+  .stars-layer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 200%; height: 100%;
+    animation: scroll-bg linear infinite;
+  }
+  .stars-layer svg { width: 100%; height: 100%; }
+  .stars-layer.slow { animation-duration: 40s; opacity: 0.6; }
+  .stars-layer.fast { animation-duration: 18s; opacity: 0.9; }
+
+  /* Scrolling mountain silhouette */
+  #mountains {
+    position: absolute;
+    bottom: 50px;
+    left: 0;
+    width: 200%;
+    height: 120px;
+    animation: scroll-bg 25s linear infinite;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 120'%3E%3Cpolygon points='0,120 80,40 160,90 260,20 360,80 440,35 520,75 620,10 700,60 800,30 800,120' fill='%230d0028'/%3E%3C/svg%3E") repeat-x left bottom / 800px 120px;
+  }
+
+  /* ── GROUND ── */
+  #ground {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 50px;
+    background: var(--ground);
+    border-top: 2px solid var(--neon-cyan);
+    box-shadow: 0 -4px 20px rgba(0,255,204,0.3);
+    overflow: hidden;
+  }
+
+  /* scrolling ground dashes */
+  #ground::before {
+    content: '';
+    position: absolute;
+    top: 6px; left: 0;
+    width: 200%;
+    height: 2px;
+    background: repeating-linear-gradient(90deg, transparent, transparent 20px, rgba(0,255,204,0.25) 20px, rgba(0,255,204,0.25) 40px);
+    animation: scroll-bg 4s linear infinite;
+  }
+
+  @keyframes scroll-bg {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  /* ── CHARACTER ── */
+  #character {
+    position: absolute;
+    bottom: 50px;
+    left: 80px;
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    filter: drop-shadow(0 0 8px var(--neon-cyan));
+    transition: filter 0.1s;
+  }
+
+  #character img, #char-default {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    image-rendering: pixelated;
+  }
+
+  /* default pixel character (SVG inline) */
+  #char-default {
+    display: block;
+  }
+
+  #character.jumping {
+    filter: drop-shadow(0 0 16px var(--neon-pink));
+  }
+
+  /* ── OBSTACLES ── */
+  .obstacle {
+    position: absolute;
+    bottom: 50px;
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    z-index: 9;
+  }
+
+  /* Cactus style */
+  .cactus-trunk {
+    width: 14px;
+    background: var(--neon-pink);
+    box-shadow: 0 0 10px var(--neon-pink);
+    border-radius: 2px 2px 0 0;
+    position: relative;
+  }
+  .cactus-trunk::before,
+  .cactus-trunk::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 12px;
+    background: var(--neon-pink);
+    box-shadow: 0 0 8px var(--neon-pink);
+    border-radius: 2px;
+  }
+  .cactus-trunk::before { left: -10px; top: 30%; }
+  .cactus-trunk::after  { right: -10px; top: 20%; }
+
+  /* ── SCORE ── */
+  #score-display {
+    position: absolute;
+    top: 14px;
+    right: 18px;
+    font-family: var(--font);
+    font-size: 11px;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 8px var(--neon-cyan);
+    z-index: 20;
+    letter-spacing: 2px;
+  }
+
+  /* ── SPEED INDICATOR ── */
+  #speed-display {
+    position: absolute;
+    top: 14px;
+    left: 18px;
+    font-family: var(--font);
+    font-size: 8px;
+    color: rgba(0,255,204,0.5);
+    z-index: 20;
+    letter-spacing: 1px;
+  }
+
+  /* ── OVERLAYS (PRE / GAMEOVER) ── */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 0, 31, 0.88);
+    backdrop-filter: blur(2px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    z-index: 30;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity:0; } to { opacity:1; }
+  }
+
+  .overlay h1 {
+    font-family: var(--font);
+    font-size: 20px;
+    color: var(--neon-pink);
+    text-shadow: 0 0 20px var(--neon-pink), 0 0 40px var(--neon-pink);
+    letter-spacing: 4px;
+    animation: flicker 3s infinite;
+  }
+
+  @keyframes flicker {
+    0%,95%,100% { opacity:1; }
+    97% { opacity:0.5; }
+  }
+
+  .overlay .subtitle {
+    font-size: 7px;
+    color: rgba(0,255,204,0.7);
+    letter-spacing: 3px;
+    text-align: center;
+    line-height: 1.8;
+  }
+
+  /* upload zone */
+  #upload-zone {
+    position: relative;
+    width: 200px;
+    border: 2px dashed rgba(0,255,204,0.5);
+    border-radius: 4px;
+    padding: 14px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    font-size: 7px;
+    color: rgba(0,255,204,0.7);
+    letter-spacing: 1px;
+    line-height: 1.8;
+  }
+  #upload-zone:hover { border-color: var(--neon-cyan); background: rgba(0,255,204,0.05); }
+  #upload-zone.has-img { border-color: var(--neon-pink); border-style: solid; background: rgba(255,45,120,0.06); color: var(--neon-pink); }
+  #upload-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+
+  #preview-img {
+    display: none;
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    margin: 6px auto;
+    image-rendering: pixelated;
+    filter: drop-shadow(0 0 6px var(--neon-pink));
+  }
+  #preview-img.visible { display: block; }
+
+  /* buttons */
+  .btn {
+    font-family: var(--font);
+    font-size: 9px;
+    letter-spacing: 2px;
+    padding: 10px 20px;
+    border: 2px solid;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-primary {
+    color: var(--neon-cyan);
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 12px rgba(0,255,204,0.3);
+  }
+  .btn-primary:hover {
+    background: var(--neon-cyan);
+    color: #0a001f;
+    box-shadow: 0 0 25px rgba(0,255,204,0.8);
+  }
+  .btn-secondary {
+    color: rgba(0,255,204,0.5);
+    border-color: rgba(0,255,204,0.3);
+    font-size: 7px;
+  }
+  .btn-secondary:hover {
+    color: var(--neon-cyan);
+    border-color: var(--neon-cyan);
+  }
+
+  .btn-row { display: flex; gap: 12px; }
+
+  /* flash on hit */
+  #game-wrapper.flash { animation: hitFlash 0.25s; }
+  @keyframes hitFlash {
+    0%   { box-shadow: 0 0 60px var(--neon-pink), inset 0 0 40px rgba(255,45,120,0.3); }
+    100% { box-shadow: 0 0 30px var(--neon-cyan), inset 0 0 60px rgba(0,255,204,0.04); }
+  }
+
+  /* HIGH SCORE badge */
+  #hi-score {
+    position: absolute;
+    top: 30px;
+    right: 18px;
+    font-size: 7px;
+    color: rgba(255,230,0,0.6);
+    text-shadow: 0 0 6px var(--neon-yellow);
+    z-index: 20;
+    letter-spacing: 2px;
+  }
+
+  /* game over score */
+  .go-score { font-size: 11px; color: var(--neon-yellow); text-shadow: 0 0 10px var(--neon-yellow); }
+  .go-hi { font-size: 8px; color: rgba(255,230,0,0.6); }
+
+  /* Outside wrapper label */
+  #outer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 20px;
+    width: 100%;
+    max-width: 860px;
+  }
+  #game-title {
+    font-family: var(--font);
+    font-size: 28px;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 20px var(--neon-cyan), 0 0 40px var(--neon-cyan), 0 0 80px rgba(0,255,204,0.3);
+    letter-spacing: 8px;
+    text-align: center;
+    animation: flicker 3s infinite, titlePulse 2s ease-in-out infinite alternate;
+  }
+  @keyframes titlePulse {
+    from { text-shadow: 0 0 20px var(--neon-cyan), 0 0 40px var(--neon-cyan); }
+    to   { text-shadow: 0 0 30px var(--neon-cyan), 0 0 60px var(--neon-cyan), 0 0 100px rgba(0,255,204,0.4); }
+  }
+  #game-label {
+    font-family: var(--font);
+    font-size: 8px;
+    color: rgba(0,255,204,0.3);
+    letter-spacing: 3px;
+    text-align: center;
+  }
+
+  /* Overlay click isolation */
+  .overlay { pointer-events: auto; }
+  .overlay * { pointer-events: auto; }
+
+  /* Challenge banner */
+  #challenge-banner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    font-family: var(--font);
+    font-size: 10px;
+    color: var(--neon-yellow);
+    text-shadow: 0 0 15px var(--neon-yellow);
+    z-index: 25;
+    pointer-events: none;
+    opacity: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    white-space: nowrap;
+    letter-spacing: 2px;
+  }
+  #challenge-banner.show {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+
+  /* Flying obstacle */
+  .obstacle.flying {
+    bottom: auto;
+    top: 100px;
+  }
+  .obstacle.flying .cactus-trunk {
+    background: var(--neon-yellow);
+    box-shadow: 0 0 10px var(--neon-yellow);
+    border-radius: 50%;
+  }
+  .obstacle.flying .cactus-trunk::before,
+  .obstacle.flying .cactus-trunk::after {
+    background: var(--neon-yellow);
+    box-shadow: 0 0 8px var(--neon-yellow);
+  }
+
+  /* Double obstacle */
+  .obstacle.tall .cactus-trunk {
+    background: #ff6b00;
+    box-shadow: 0 0 10px #ff6b00;
+  }
+  .obstacle.tall .cactus-trunk::before,
+  .obstacle.tall .cactus-trunk::after {
+    background: #ff6b00;
+    box-shadow: 0 0 8px #ff6b00;
+  }
+
+  /* Wide obstacle */
+  .obstacle.wide .cactus-trunk {
+    background: #b44dff;
+    box-shadow: 0 0 10px #b44dff;
+    width: 30px;
+  }
+  .obstacle.wide .cactus-trunk::before,
+  .obstacle.wide .cactus-trunk::after {
+    background: #b44dff;
+    box-shadow: 0 0 8px #b44dff;
+  }
+
+  /* scanline overlay */
+  #game-wrapper::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 4px);
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  @media (max-width: 860px) {
+    #game-wrapper { width: 95vw; height: 240px; }
+    #game-title { font-size: 20px; letter-spacing: 5px; }
+    #game-label { font-size: 6px; }
+  }
+  @media (max-width: 500px) {
+    #game-wrapper { width: 98vw; height: 200px; }
+    #game-title { font-size: 14px; letter-spacing: 3px; }
+    .overlay h1 { font-size: 14px; }
+    .overlay .subtitle { font-size: 6px; }
+    #upload-zone { width: 160px; padding: 10px 8px; }
+    .btn { font-size: 7px; padding: 8px 14px; }
+    #character { width: 40px; height: 40px; left: 50px; }
+    #score-display { font-size: 9px; }
+    #speed-display { font-size: 7px; }
+    #hi-score { font-size: 6px; }
+    #challenge-banner { font-size: 8px; }
+  }
+  @media (max-width: 360px) {
+    #game-wrapper { height: 180px; }
+    #game-title { font-size: 11px; }
+    #outer { padding: 10px; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+<div id="outer">
+  <h1 id="game-title">NEON RUNNER</h1>
+  <div id="game-wrapper">
+
+    <!-- SKY -->
+    <div id="sky">
+      <!-- Stars Layer Slow -->
+      <div class="stars-layer slow">
+        <svg viewBox="0 0 1600 300" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" id="stars-svg-slow"></svg>
+      </div>
+      <!-- Stars Layer Fast -->
+      <div class="stars-layer fast">
+        <svg viewBox="0 0 1600 300" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" id="stars-svg-fast"></svg>
+      </div>
+      <!-- Mountains -->
+      <div id="mountains"></div>
+    </div>
+
+    <!-- GROUND -->
+    <div id="ground"></div>
+
+    <!-- CHARACTER -->
+    <div id="character">
+      <svg id="char-default" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+        <!-- pixel robot head -->
+        <rect x="4" y="0" width="8" height="7" fill="#00ffcc"/>
+        <rect x="5" y="1" width="2" height="2" fill="#0a001f"/>
+        <rect x="9" y="1" width="2" height="2" fill="#0a001f"/>
+        <rect x="4" y="5" width="8" height="1" fill="#ff2d78"/>
+        <!-- body -->
+        <rect x="3" y="7" width="10" height="6" fill="#00c8a0"/>
+        <rect x="1" y="8" width="2" height="4" fill="#00ffcc"/>
+        <rect x="13" y="8" width="2" height="4" fill="#00ffcc"/>
+        <!-- legs -->
+        <rect x="4" y="13" width="3" height="3" fill="#00c8a0"/>
+        <rect x="9" y="13" width="3" height="3" fill="#00c8a0"/>
+        <rect x="3" y="14" width="2" height="2" fill="#ff2d78"/>
+        <rect x="11" y="14" width="2" height="2" fill="#ff2d78"/>
+      </svg>
+    </div>
+
+    <!-- OVERLAYS -->
+    <!-- PRE-GAME -->
+    <div class="overlay" id="overlay-pre">
+      <h1>NEON RUNNER</h1>
+      <p class="subtitle">PILIH KARAKTER KAMU<br>ATAU GUNAKAN DEFAULT</p>
+      <div id="upload-zone">
+        <input type="file" id="file-input" accept="image/png,image/jpeg,image/gif,image/webp">
+        <img id="preview-img" src="" alt="preview">
+        <span id="upload-text">📁 UPLOAD GAMBAR<br><span style="font-size:6px;opacity:0.6">(PNG/JPG, opsional)</span></span>
+      </div>
+      <button class="btn btn-primary" id="btn-start">▶ MULAI [SPASI]</button>
+    </div>
+
+    <!-- GAME OVER -->
+    <div class="overlay" id="overlay-gameover" style="display:none;">
+      <h1>GAME OVER</h1>
+      <p class="go-score" id="go-score-text">SKOR: 0</p>
+      <p class="go-hi" id="go-hi-text">HI-SCORE: 0</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-retry">↺ MAIN LAGI</button>
+        <button class="btn btn-secondary" id="btn-change">GANTI KARAKTER</button>
+      </div>
+    </div>
+
+    <!-- HUD -->
+    <div id="speed-display">SPD: <span id="spd-val">1</span>x</div>
+    <div id="score-display">SKOR: <span id="score-val">0</span></div>
+    <div id="hi-score">HI: <span id="hi-val">0</span></div>
+    <div id="challenge-banner"></div>
+
+  </div>
+  <div id="game-label">TEKAN SPASI / SENTUH LAYAR UNTUK MELOMPAT</div>
+</div>
+
+<script>
+// ── STARS GENERATION ──
+function generateStars(svgId, count, minR, maxR) {
+  const svg = document.getElementById(svgId);
+  for (let i = 0; i < count; i++) {
+    const x = Math.random() * 1600;
+    const y = Math.random() * 200;
+    const r = minR + Math.random() * (maxR - minR);
+    const op = 0.4 + Math.random() * 0.6;
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", x);
+    circle.setAttribute("cy", y);
+    circle.setAttribute("r", r);
+    circle.setAttribute("fill", `rgba(255,255,255,${op})`);
+    svg.appendChild(circle);
+    // duplicate for seamless loop
+    const circle2 = circle.cloneNode();
+    circle2.setAttribute("cx", x + 800);
+    svg.appendChild(circle2);
+  }
+}
+generateStars("stars-svg-slow", 50, 0.5, 1.5);
+generateStars("stars-svg-fast", 30, 1, 2.5);
+
+// ── AUDIO (Web Audio API) ──
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new AudioCtx();
+}
+function playTone(freq, type, duration, vol=0.15) {
+  try {
+    ensureAudio();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.5, audioCtx.currentTime + duration);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.start(); osc.stop(audioCtx.currentTime + duration);
+  } catch(e) {}
+}
+function sfxJump()     { playTone(520, 'square', 0.12, 0.12); setTimeout(()=>playTone(700,'square',0.08,0.08),60); }
+function sfxGameOver() { playTone(200,'sawtooth',0.15,0.18); setTimeout(()=>playTone(150,'sawtooth',0.15,0.3),120); }
+function sfxScore()    { playTone(880,'square',0.05,0.07); }
+
+// ── GAME STATE ──
+const STATES = { PRE: 0, PLAYING: 1, DEAD: 2 };
+let state = STATES.PRE;
+
+const charEl    = document.getElementById('character');
+const charDef   = document.getElementById('char-default');
+const preO      = document.getElementById('overlay-pre');
+const goO       = document.getElementById('overlay-gameover');
+const scoreVal  = document.getElementById('score-val');
+const hiVal     = document.getElementById('hi-val');
+const spdVal    = document.getElementById('spd-val');
+const goScoreT  = document.getElementById('go-score-text');
+const goHiT     = document.getElementById('go-hi-text');
+const wrapper   = document.getElementById('game-wrapper');
+
+let score = 0;
+let hiScore = parseInt(localStorage.getItem('neon_hi') || '0');
+hiVal.textContent = hiScore;
+
+// character image (base64 or null = default)
+let charImgSrc = null;
+let charImgEl  = null;
+
+// Physics
+let charY     = 0;   // offset from ground (0 = on ground)
+let velY      = 0;
+const GRAVITY  = 0.65;
+const JUMP_VEL = -14;
+const GROUND_Y = 50; // ground height px
+let isJumping = false;
+
+// Speed
+let gameSpeed    = 4;    // px per frame (obstacle movement)
+let speedTimer   = 0;
+const SPEED_INCR = 0.0004;  // per frame increase
+
+// Obstacles
+let obstacles    = [];
+let spawnTimer   = 0;
+let spawnInterval= 110; // frames between obstacles (random-ish)
+
+// Score
+let scoreTimer  = 0;
+const SCORE_INTERVAL = 6; // frames per point
+
+// RAF
+let rafId;
+
+// ── IMAGE UPLOAD ──
+const fileInput  = document.getElementById('file-input');
+const uploadZone = document.getElementById('upload-zone');
+const previewImg = document.getElementById('preview-img');
+const uploadText = document.getElementById('upload-text');
+
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    charImgSrc = ev.target.result;
+    previewImg.src = charImgSrc;
+    previewImg.classList.add('visible');
+    uploadText.textContent = '✓ ' + file.name.slice(0, 16);
+    uploadZone.classList.add('has-img');
+    applyCharImg();
+  };
+  reader.readAsDataURL(file);
+});
+
+function applyCharImg() {
+  charDef.style.display = 'none';
+  if (!charImgEl) {
+    charImgEl = document.createElement('img');
+    charImgEl.style.cssText = 'width:100%;height:100%;object-fit:contain;image-rendering:pixelated';
+    charEl.appendChild(charImgEl);
+  }
+  charImgEl.src = charImgSrc;
+  charImgEl.style.display = 'block';
+}
+
+function resetCharImg() {
+  charDef.style.display = 'block';
+  if (charImgEl) charImgEl.style.display = 'none';
+  charImgSrc = null;
+  previewImg.classList.remove('visible');
+  uploadZone.classList.remove('has-img');
+  uploadText.innerHTML = '📁 UPLOAD GAMBAR<br><span style="font-size:6px;opacity:0.6">(PNG/JPG, opsional)</span>';
+  fileInput.value = '';
+}
+
+// ── CHALLENGE SYSTEM ──
+const challengeBanner = document.getElementById('challenge-banner');
+let lastChallengeMilestone = 0;
+const challenges = [
+  { score: 50,  msg: '⚡ SPEED UP!',         action: 'speed' },
+  { score: 100, msg: '🔥 TALL OBSTACLES!',   action: 'tall' },
+  { score: 200, msg: '💜 WIDE BLOCKS!',      action: 'wide' },
+  { score: 300, msg: '⚡ FASTER!',           action: 'speed' },
+  { score: 400, msg: '🔥 DOUBLE TROUBLE!',   action: 'double' },
+  { score: 500, msg: '💜 MEGA WIDE!',        action: 'wide' },
+  { score: 650, msg: '⚡ HYPER SPEED!',      action: 'speed' },
+  { score: 800, msg: '🔥 CHAOS MODE!',       action: 'chaos' },
+];
+let activeChallenge = null;
+
+function showChallenge(msg) {
+  challengeBanner.textContent = msg;
+  challengeBanner.classList.add('show');
+  setTimeout(() => challengeBanner.classList.remove('show'), 1800);
+  playTone(660,'square',0.08,0.1); setTimeout(()=>playTone(880,'square',0.1,0.1),100);
+}
+
+function checkChallengeMilestone() {
+  for (let i = challenges.length - 1; i >= 0; i--) {
+    if (score >= challenges[i].score && lastChallengeMilestone < challenges[i].score) {
+      lastChallengeMilestone = challenges[i].score;
+      activeChallenge = challenges[i].action;
+      showChallenge(challenges[i].msg);
+      if (challenges[i].action === 'speed') gameSpeed += 0.8;
+      break;
+    }
+  }
+}
+
+// ── CONTROLS ──
+function isOverlayVisible() {
+  return preO.style.display !== 'none' || goO.style.display !== 'none';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    if (state === STATES.PLAYING) jump();
+  }
+});
+
+wrapper.addEventListener('touchstart', e => {
+  if (isOverlayVisible()) return;
+  e.preventDefault();
+  if (state === STATES.PLAYING) jump();
+}, { passive: false });
+
+wrapper.addEventListener('click', e => {
+  if (isOverlayVisible()) return;
+  if (state === STATES.PLAYING) jump();
+});
+
+// ── BUTTONS ──
+document.getElementById('btn-start').addEventListener('click', e => {
+  e.stopPropagation();
+  startGame();
+});
+document.getElementById('btn-retry').addEventListener('click', e => {
+  e.stopPropagation();
+  retryGame();
+});
+document.getElementById('btn-change').addEventListener('click', e => {
+  e.stopPropagation();
+  changeChar();
+});
+
+// ── GAME FUNCTIONS ──
+function startGame() {
+  if (state === STATES.PLAYING) return;
+  ensureAudio();
+  preO.style.display = 'none';
+  goO.style.display = 'none';
+  state = STATES.PLAYING;
+  score = 0;
+  scoreVal.textContent = '0';
+  gameSpeed = 4;
+  spawnTimer = 60;
+  spawnInterval = randomInterval();
+  scoreTimer = 0;
+  speedTimer = 0;
+  lastChallengeMilestone = 0;
+  activeChallenge = null;
+  isJumping = false;
+  charY = 0;
+  velY = 0;
+  updateCharPos();
+  cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(gameLoop);
+}
+
+function retryGame() {
+  clearObstacles();
+  startGame();
+}
+
+function changeChar() {
+  clearObstacles();
+  goO.style.display = 'none';
+  preO.style.display = 'flex';
+  state = STATES.PRE;
+  cancelAnimationFrame(rafId);
+  resetCharImg();
+  charY = 0;
+  velY = 0;
+  updateCharPos();
+}
+
+function jump() {
+  if (!isJumping) {
+    isJumping = true;
+    velY = JUMP_VEL;
+    charEl.classList.add('jumping');
+    sfxJump();
+  }
+}
+
+function updateCharPos() {
+  charEl.style.bottom = (GROUND_Y + charY) + 'px';
+}
+
+// ── OBSTACLES ──
+function spawnObstacle() {
+  const obs = document.createElement('div');
+  obs.className = 'obstacle';
+
+  // Determine obstacle type based on active challenge and randomness
+  let type = 'normal';
+  if (activeChallenge === 'tall' && Math.random() < 0.5) type = 'tall';
+  else if (activeChallenge === 'wide' && Math.random() < 0.4) type = 'wide';
+  else if (activeChallenge === 'double' && Math.random() < 0.5) type = 'double';
+  else if (activeChallenge === 'chaos') {
+    const r = Math.random();
+    if (r < 0.3) type = 'tall';
+    else if (r < 0.55) type = 'wide';
+    else if (r < 0.75) type = 'double';
+  }
+  // Also add occasional variety after score 100 even without active challenge
+  if (type === 'normal' && score >= 100) {
+    const r = Math.random();
+    if (r < 0.12) type = 'tall';
+    else if (r < 0.2) type = 'wide';
+  }
+
+  if (type === 'tall') {
+    obs.classList.add('tall');
+    const trunk = document.createElement('div');
+    trunk.className = 'cactus-trunk';
+    trunk.style.height = (50 + Math.floor(Math.random() * 20)) + 'px';
+    obs.appendChild(trunk);
+  } else if (type === 'wide') {
+    obs.classList.add('wide');
+    const trunk = document.createElement('div');
+    trunk.className = 'cactus-trunk';
+    trunk.style.height = (25 + Math.floor(Math.random() * 15)) + 'px';
+    obs.appendChild(trunk);
+  } else if (type === 'double') {
+    // Two separate obstacles close together
+    for (let i = 0; i < 2; i++) {
+      const trunk = document.createElement('div');
+      trunk.className = 'cactus-trunk';
+      trunk.style.height = (30 + Math.floor(Math.random() * 20)) + 'px';
+      obs.appendChild(trunk);
+    }
+    obs.style.gap = '18px';
+  } else {
+    // Normal cactus cluster (1-3 trunks)
+    const count = Math.random() < 0.4 ? (Math.random() < 0.5 ? 2 : 3) : 1;
+    for (let i = 0; i < count; i++) {
+      const trunk = document.createElement('div');
+      trunk.className = 'cactus-trunk';
+      const h = 30 + Math.floor(Math.random() * 25);
+      trunk.style.height = h + 'px';
+      obs.appendChild(trunk);
+    }
+  }
+
+  const wrapW = wrapper.clientWidth;
+  obs.style.left = wrapW + 'px';
+  wrapper.appendChild(obs);
+  obstacles.push(obs);
+}
+
+function clearObstacles() {
+  obstacles.forEach(o => o.remove());
+  obstacles = [];
+}
+
+function randomInterval() {
+  // Slightly shorter intervals as score goes up
+  const base = Math.max(50, 70 - Math.floor(score / 200) * 5);
+  return base + Math.floor(Math.random() * 70);
+}
+
+// ── COLLISION (AABB) ──
+function checkCollision(obs) {
+  const c = charEl.getBoundingClientRect();
+  const o = obs.getBoundingClientRect();
+  // shrink hitbox slightly for fairness
+  const pad = 6;
+  return (
+    c.right - pad  > o.left  + pad &&
+    c.left  + pad  < o.right - pad &&
+    c.bottom - pad > o.top   + pad &&
+    c.top   + pad  < o.bottom - pad
+  );
+}
+
+// ── GAME LOOP ──
+function gameLoop() {
+  if (state !== STATES.PLAYING) return;
+
+  // ── Physics ──
+  if (isJumping || charY > 0) {
+    velY += GRAVITY;
+    charY -= velY;
+    if (charY <= 0) {
+      charY = 0;
+      velY = 0;
+      isJumping = false;
+      charEl.classList.remove('jumping');
+    }
+  }
+  updateCharPos();
+
+  // ── Speed ramp ──
+  speedTimer++;
+  gameSpeed += SPEED_INCR;
+  spdVal.textContent = (gameSpeed / 4).toFixed(1);
+
+  // ── Obstacle spawn ──
+  spawnTimer--;
+  if (spawnTimer <= 0) {
+    spawnObstacle();
+    spawnInterval = randomInterval();
+    spawnTimer = spawnInterval;
+  }
+
+  // ── Move & cull obstacles + collision ──
+  const wrapL = wrapper.getBoundingClientRect().left;
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const obs = obstacles[i];
+    const curLeft = parseFloat(obs.style.left);
+    obs.style.left = (curLeft - gameSpeed) + 'px';
+
+    if (curLeft < -80) {
+      obs.remove();
+      obstacles.splice(i, 1);
+      continue;
+    }
+    if (checkCollision(obs)) {
+      triggerGameOver();
+      return;
+    }
+  }
+
+  // ── Score ──
+  scoreTimer++;
+  if (scoreTimer >= SCORE_INTERVAL) {
+    scoreTimer = 0;
+    score++;
+    scoreVal.textContent = score;
+    if (score % 100 === 0) sfxScore();
+    if (score > hiScore) {
+      hiScore = score;
+      hiVal.textContent = hiScore;
+      localStorage.setItem('neon_hi', hiScore);
+    }
+    checkChallengeMilestone();
+  }
+
+  rafId = requestAnimationFrame(gameLoop);
+}
+
+function triggerGameOver() {
+  state = STATES.DEAD;
+  sfxGameOver();
+
+  // Flash effect
+  wrapper.classList.remove('flash');
+  void wrapper.offsetWidth;
+  wrapper.classList.add('flash');
+
+  goScoreT.textContent = 'SKOR: ' + score;
+  goHiT.textContent    = 'HI-SCORE: ' + hiScore;
+  goO.style.display    = 'flex';
+
+  cancelAnimationFrame(rafId);
+}
+</script>
+</body>
+</html>
