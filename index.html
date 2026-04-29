@@ -115,6 +115,7 @@
     z-index: 10;
     filter: drop-shadow(0 0 8px var(--neon-cyan));
     transition: filter 0.1s;
+    will-change: bottom;
   }
   #character img, #char-default {
     width: 100%;
@@ -131,10 +132,12 @@
   .obstacle {
     position: absolute;
     bottom: 50px;
+    left: 0;
     display: flex;
     align-items: flex-end;
     gap: 3px;
     z-index: 9;
+    will-change: transform;
   }
   .cactus-trunk {
     width: 14px;
@@ -473,7 +476,7 @@
 </head>
 <body>
 <div id="outer">
-  <h1 id="game-title">SUPERDINGGO RAFASYA</h1>
+  <h1 id="game-title">SUPERDINGGO</h1>
   <div id="game-wrapper">
 
     <div id="sky">
@@ -512,7 +515,7 @@
         <img id="preview-img" src="" alt="preview">
         <span id="upload-text">📁 UPLOAD GAMBAR<br><span style="font-size:6px;opacity:0.6">(PNG/JPG, opsional)</span></span>
       </div>
-      <button class="btn btn-primary" id="btn-start">▶ MULAI</button>
+      <button class="btn btn-primary" id="btn-start">▶ MULAI [SPASI]</button>
     </div>
 
     <div class="overlay" id="overlay-gameover" style="display:none;">
@@ -626,6 +629,22 @@ let scoreTimer  = 0;
 const SCORE_INTERVAL = 6;
 
 let rafId;
+
+// ── LAYOUT CACHE (baca DOM sekali, bukan tiap frame) ──
+// Menyimpan ukuran karakter & wrapper agar game loop
+// tidak perlu getBoundingClientRect() setiap frame.
+let wrapH = 0, wrapW = 0;
+let charOffsetLeft = 0, charOffsetWidth = 0, charOffsetHeight = 0;
+
+function cacheLayout() {
+  wrapH = wrapper.clientHeight;
+  wrapW = wrapper.clientWidth;
+  charOffsetLeft  = charEl.offsetLeft;
+  charOffsetWidth = charEl.offsetWidth;
+  charOffsetHeight= charEl.offsetHeight;
+}
+
+window.addEventListener('resize', cacheLayout);
 
 // ── IMAGE UPLOAD ──
 const fileInput  = document.getElementById('file-input');
@@ -756,6 +775,7 @@ function startGame() {
   isJumping = false;
   charY = 0;
   velY = 0;
+  cacheLayout(); // baca ukuran DOM sekali di sini
   updateCharPos();
   cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(gameLoop);
@@ -843,9 +863,12 @@ function spawnObstacle() {
     }
   }
 
-  const wrapW = wrapper.clientWidth;
-  obs.style.left = wrapW + 'px';
+  // Append dulu, lalu ukur sekali — tidak ada read/write di game loop
   wrapper.appendChild(obs);
+  obs._x      = wrapW;                // posisi X tersimpan di JS, bukan di DOM
+  obs._width  = obs.offsetWidth;      // baca sekali setelah append
+  obs._height = obs.offsetHeight;     // baca sekali setelah append
+  obs.style.transform = `translateX(${obs._x}px)`; // pakai transform, bukan left
   obstacles.push(obs);
 }
 
@@ -859,17 +882,25 @@ function randomInterval() {
   return base + Math.floor(Math.random() * 70);
 }
 
-// ── COLLISION ──
+// ── COLLISION — murni JS, tanpa getBoundingClientRect() ──
+// Semua koordinat dihitung dari pojok kiri-atas wrapper.
+// charOffsetLeft / charOffsetWidth / charOffsetHeight di-cache saat startGame.
 function checkCollision(obs) {
-  const c = charEl.getBoundingClientRect();
-  const o = obs.getBoundingClientRect();
   const pad = 6;
-  return (
-    c.right - pad  > o.left  + pad &&
-    c.left  + pad  < o.right - pad &&
-    c.bottom - pad > o.top   + pad &&
-    c.top   + pad  < o.bottom - pad
-  );
+
+  // Karakter: bottom = GROUND_Y + charY dari bawah wrapper
+  const cL = charOffsetLeft + pad;
+  const cR = charOffsetLeft + charOffsetWidth  - pad;
+  const cB = wrapH - GROUND_Y - charY          - pad;
+  const cT = cB   - charOffsetHeight           + pad + pad;
+
+  // Obstacle: posisi X tersimpan di obs._x
+  const oL = obs._x          + pad;
+  const oR = obs._x + obs._width  - pad;
+  const oT = wrapH - GROUND_Y - obs._height    + pad;
+  const oB = wrapH - GROUND_Y                  - pad;
+
+  return cR > oL && cL < oR && cB > oT && cT < oB;
 }
 
 // ── GAME LOOP ──
@@ -901,9 +932,9 @@ function gameLoop() {
 
   for (let i = obstacles.length - 1; i >= 0; i--) {
     const obs = obstacles[i];
-    const curLeft = parseFloat(obs.style.left);
-    obs.style.left = (curLeft - gameSpeed) + 'px';
-    if (curLeft < -80) {
+    obs._x -= gameSpeed;                                    // update posisi di JS
+    obs.style.transform = `translateX(${obs._x}px)`;       // satu write, GPU composited
+    if (obs._x < -80) {
       obs.remove();
       obstacles.splice(i, 1);
       continue;
