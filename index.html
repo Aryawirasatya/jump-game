@@ -33,6 +33,7 @@
     overflow: hidden;
     color: white;
     user-select: none;
+    touch-action: manipulation;
   }
 
   /* ── GAME WRAPPER ── */
@@ -44,6 +45,7 @@
     box-shadow: 0 0 30px var(--neon-cyan), inset 0 0 60px rgba(0,255,204,0.04);
     overflow: hidden;
     border-radius: 4px;
+    touch-action: none;
   }
 
   /* ── SKY BACKGROUND ── */
@@ -273,6 +275,8 @@
     transition: all 0.15s;
     position: relative;
     overflow: hidden;
+    touch-action: manipulation;
+
   }
   .btn-primary {
     color: var(--neon-cyan);
@@ -710,16 +714,13 @@ document.addEventListener('keydown', e => {
   }
 });
 
-wrapper.addEventListener('touchstart', e => {
+wrapper.addEventListener('pointerdown', e => {
   if (isOverlayVisible()) return;
-  e.preventDefault();
-  if (state === STATES.PLAYING) jump();
+  if (state === STATES.PLAYING) {
+    e.preventDefault();
+    jump();
+  }
 }, { passive: false });
-
-wrapper.addEventListener('click', e => {
-  if (isOverlayVisible()) return;
-  if (state === STATES.PLAYING) jump();
-});
 
 // ── BUTTONS ──
 document.getElementById('btn-start').addEventListener('click', e => {
